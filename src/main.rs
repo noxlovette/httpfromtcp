@@ -1,12 +1,21 @@
-use std::{fs::File, io::Read, sync::mpsc, thread};
+use std::{io::Read, net::TcpListener, sync::mpsc, thread};
 
 fn main() -> std::io::Result<()> {
-    let f = File::open("messages.txt")?;
+    let l = TcpListener::bind("127.0.0.1:42069").unwrap();
 
-    let rx = get_lines_channel(f);
+    match l.accept() {
+        Ok((socket, addr)) => {
+            println!("connection established from {addr}");
 
-    for line in rx {
-        println!("read: {line}");
+            let rx = get_lines_channel(socket);
+
+            for line in rx {
+                println!("{line}");
+            }
+
+            println!("file transfer complete. shutting down");
+        }
+        Err(e) => println!("couldn't get client: {e:?}"),
     }
 
     Ok(())
