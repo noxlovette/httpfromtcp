@@ -1,12 +1,15 @@
 use std::io::{self, Read, read_to_string};
 use thiserror::Error;
 
+#[derive(Default)]
 pub struct Request {
-    pub request_line: RequestLine,
+    pub request_line: Option<RequestLine>,
     pub state: ParserState,
 }
 
+#[derive(PartialEq, Default)]
 pub enum ParserState {
+    #[default]
     Init,
     Done,
 }
@@ -25,7 +28,7 @@ pub enum HTTPMethod {
     PUT,
 }
 
-const SEPARATOR: &str = "\r\n";
+const SEPARATOR: &[u8] = b"\r\n";
 
 #[derive(Error, Debug)]
 pub enum HTTPParsingError {
@@ -42,44 +45,90 @@ pub enum HTTPParsingError {
 
 impl Request {
     pub fn new() -> Self {
-        Request {
-            request_line: (),
-            state: ParserState::Init,
+        Self::default()
+    }
+
+    pub fn done(&self) -> bool {
+        self.state == ParserState::Done
+    }
+
+    pub fn from_reader(mut r: impl Read) -> Result<Self, HTTPParsingError> {
+        let mut req = Request::new();
+
+        let mut buf = [0u8; 1024];
+        let mut buf_len = 0;
+        while !req.done() {
+            let n = r.read(&mut buf[buf_len..])?;
+            if n == 0 {
+                break;
+            }
+            buf_len += n;
+
+            let read = req.parse(&buf[..buf_len])?;
+            buf.copy_within(read..buf_len, 0);
+            buf_len -= read;
         }
+
+        Ok(req)
     }
 
-    pub fn from_reader(r: impl Read) -> Result<Self, HTTPParsingError> {
-        let s = read_to_string(r)?;
+    fn parse(&mut self, data: &[u8]) -> Result<usize, HTTPParsingError> {
+        let mut read: usize = 0;
+        loop {
+            match self.state {
+                ParserState::Init => {
+                    let (rl, n) = Self::parse_request_line(&data[read..])?;
 
-        let (rl, _rest) = Self::parse_request_line(&s)?;
+                    if n == 0 {
+                        break;
+                    }
+                    self.request_line = rl;
+                    read += n;
 
-        Ok(Request { request_line: rl })
+                    self.state = ParserState::Done;
+                }
+                ParserState::Done => break,
+            }
+        }
+
+        return Ok(read);
     }
 
-    fn parse_request_line(s: &str) -> Result<(RequestLine, u32), HTTPParsingError> {
-        if let Some(i) = s.find(SEPARATOR) {
-            let start_line = &s[..i];
+    fn parse_request_line(b: &[u8]) -> Result<(Option<RequestLine>, usize), HTTPParsingError> {
+        if let Some(i) = b.windows(SEPARATOR.len()).position(|w| w == SEPARATOR) {
+            let start_line = &b[..i];
 
-            // DO NOT INLUCDE THE SEPARATOR IN THE REST
-            let rest_of_message = &s[i + SEPARATOR.len()..];
+            let read = i + SEPARATOR.len();
 
-            let mut parts = start_line.split(' ');
+            let mut parts = start_line.split(|&b| b == b' ');
 
             let method = parts
                 .next()
-                .filter(|m| !m.is_empty() && m.chars().all(|c| c.is_ascii_uppercase()))
-                .map(str::to_string)
-                .ok_or(HTTPParsingError::BadRequestLine)?;
-            let request_target = parts
-                .next()
+                .filter(|tok| !tok.is_empty() && tok.iter().all(|&c| c.is_ascii_uppercase()))
+                .and_then(|tok| std::str::from_utf8(tok).ok())
                 .ok_or(HTTPParsingError::BadRequestLine)?
                 .to_string();
+
+            let request_target = parts
+                .next()
+                .filter(|t| !t.is_empty()) // add your target rules here
+                .and_then(|tok| std::str::from_utf8(tok).ok())
+                .ok_or(HTTPParsingError::BadRequestLine)?
+                .to_string();
+
             let http_version = parts
                 .next()
-                .and_then(|s| s.split_once("/"))
-                .filter(|(proto, v)| *proto == "HTTP" && *v == "1.1")
-                .map(|(_, v)| v.to_string())
-                .ok_or(HTTPParsingError::BadRequestLine)?;
+                .ok_or(HTTPParsingError::BadRequestLine)
+                .and_then(|tok| {
+                    std::str::from_utf8(tok).map_err(|_| HTTPParsingError::BadRequestLine)
+                })
+                .and_then(|s| {
+                    let (proto, v) = s.split_once('/').ok_or(HTTPParsingError::BadRequestLine)?;
+                    if proto != "HTTP" || !(v == "1.1" || v == "1.0") {
+                        return Err(HTTPParsingError::BadRequestLine);
+                    }
+                    Ok(v.to_string())
+                })?;
 
             if parts.next().is_some() {
                 return Err(HTTPParsingError::BadRequestLine);
@@ -94,9 +143,9 @@ impl Request {
             if !rl.valid_http() {
                 return Err(HTTPParsingError::UnsupportedHTTPVersion);
             }
-            Ok((rl, rest_of_message))
+            Ok((Some(rl), read))
         } else {
-            Err(HTTPParsingError::RequestLineNotFound)
+            Ok((None, 0))
         }
     }
 }
@@ -151,9 +200,11 @@ mod tests {
         let r = Request::from_reader(
             ChunkReader::new("GET / HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n", 3)
         ).unwrap();
-        assert_eq!("GET", r.request_line.method);
-        assert_eq!("/", r.request_line.request_target);
-        assert_eq!("1.1", r.request_line.http_version);
+
+        let rl = r.request_line.unwrap();
+        assert_eq!("GET", rl.method);
+        assert_eq!("/", rl.request_target);
+        assert_eq!("1.1", rl.http_version);
     }
 
     #[test]
@@ -161,9 +212,12 @@ mod tests {
         let r = Request::from_reader(
             ChunkReader::new("GET /coffee HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n", 1),
         ).unwrap();
-        assert_eq!("GET", r.request_line.method);
-        assert_eq!("/coffee", r.request_line.request_target);
-        assert_eq!("1.1", r.request_line.http_version);
+
+        let rl = r.request_line.unwrap();
+
+        assert_eq!("GET", rl.method);
+        assert_eq!("/coffee", rl.request_target);
+        assert_eq!("1.1", rl.http_version);
     }
 
     #[test]
