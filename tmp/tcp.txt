@@ -1,3 +1,0 @@
-connection established from 127.0.0.1:52959
-Do you have what it takes to be an engineer at TheStartup™?
-file transfer complete. shutting down
