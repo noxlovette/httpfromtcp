@@ -1,5 +1,5 @@
-use std::io::{self, Read, read_to_string};
-use thiserror::Error;
+use crate::{HTTPParsingError, SEPARATOR};
+use std::{fmt, io::Read};
 
 #[derive(Default)]
 pub struct Request {
@@ -20,27 +20,13 @@ pub struct RequestLine {
     pub method: String,
 }
 
-pub enum HTTPMethod {
-    GET,
-    POST,
-    DELETE,
-    PATCH,
-    PUT,
-}
-
-const SEPARATOR: &[u8] = b"\r\n";
-
-#[derive(Error, Debug)]
-pub enum HTTPParsingError {
-    #[error("malformed request line")]
-    BadRequestLine,
-    #[error("unsupported http version")]
-    UnsupportedHTTPVersion,
-    #[error("request line not found")]
-    RequestLineNotFound,
-
-    #[error("reader error")]
-    IOError(#[from] io::Error),
+impl fmt::Display for RequestLine {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "Request line:")?;
+        writeln!(f, "- Method: {}", self.method)?;
+        writeln!(f, "- Target: {}", self.request_target)?;
+        write!(f, "- Version: {}", self.http_version)
+    }
 }
 
 impl Request {

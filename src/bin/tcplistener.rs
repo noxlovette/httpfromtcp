@@ -1,18 +1,17 @@
-use httpfromtcp::get_lines_channel;
 use std::net::TcpListener;
 
-fn main() -> std::io::Result<()> {
+use httpfromtcp::Request;
+
+fn main() -> Result<(), anyhow::Error> {
     let l = TcpListener::bind("127.0.0.1:42069").unwrap();
 
     match l.accept() {
         Ok((socket, addr)) => {
             println!("connection established from {addr}");
 
-            let rx = get_lines_channel(socket);
+            let request = Request::from_reader(socket)?;
 
-            for line in rx {
-                println!("{line}");
-            }
+            println!("{}", request.request_line.unwrap());
 
             println!("file transfer complete. shutting down");
         }
