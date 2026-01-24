@@ -1,6 +1,6 @@
 mod headers;
 mod request;
-use std::io;
+use std::{fmt, io};
 
 pub use headers::*;
 pub use request::*;
@@ -26,7 +26,12 @@ pub enum HTTPParsingError {
     RequestLineNotFound,
     #[error("malformed field line")]
     BadFieldLine,
+    #[error("invalid token")]
+    BadToken,
 
     #[error("reader error")]
     IOError(#[from] io::Error),
+
+    #[error("formatting error")]
+    FmtError(#[from] fmt::Error),
 }

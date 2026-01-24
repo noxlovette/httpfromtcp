@@ -1,5 +1,6 @@
 use crate::{HTTPParsingError, SEPARATOR};
-use std::collections::HashMap;
+use std::fmt::Write;
+use std::{collections::HashMap, sync::LazyLock};
 
 pub struct Headers {
     pub headers: HashMap<String, String>,
@@ -19,7 +20,6 @@ impl Headers {
                 .windows(SEPARATOR.len())
                 .position(|b| b == SEPARATOR)
             {
-                println!("parsing header: ({:?}) - {:?}", read, i);
                 if i == 0 {
                     // EMPTY HEADER
                     done = true;
@@ -27,12 +27,13 @@ impl Headers {
                     break;
                 }
 
-                println!("header: {:?}", std::str::from_utf8(&b[read..i]));
                 let (name, value) = Self::parse_header(&b[read..read + i])?;
+
+                is_token(&name)?;
 
                 read += i + SEPARATOR.len();
 
-                self.headers.entry(name).insert_entry(value);
+                self.set(name, value)?;
             } else {
                 break;
             }
@@ -60,7 +61,62 @@ impl Headers {
 
         Ok((name, value))
     }
+
+    pub fn get(&self, name: &str) -> Option<&String> {
+        self.headers.get(&name.to_ascii_lowercase())
+    }
+    pub fn set(&mut self, mut name: String, value: String) -> Result<(), HTTPParsingError> {
+        name = name.to_ascii_lowercase();
+
+        if let Some(v) = self.headers.get(&name) {
+            let mut s = String::new();
+            write!(s, "{},{}", v, value)?;
+            self.headers.insert(name, s);
+        } else {
+            self.headers.insert(name, value);
+        }
+        Ok(())
+    }
 }
+
+fn is_token(str: &str) -> Result<(), HTTPParsingError> {
+    let b = str.as_bytes();
+
+    if b.is_empty() {
+        return Err(HTTPParsingError::BadToken);
+    }
+
+    if !b.is_ascii() {
+        return Err(HTTPParsingError::BadToken);
+    }
+
+    for &byte in b {
+        if !LUT[byte as usize] {
+            return Err(HTTPParsingError::BadToken);
+        }
+    }
+
+    Ok(())
+}
+
+static LUT: LazyLock<[bool; 256]> = LazyLock::new(|| {
+    let mut t = [false; 256];
+    for b in b'a'..=b'z' {
+        t[b as usize] = true
+    }
+    for b in b'A'..=b'Z' {
+        t[b as usize] = true
+    }
+
+    for b in b'0'..=b'9' {
+        t[b as usize] = true
+    }
+    for b in b"!#$%&'*+-.^_`|~" {
+        t[*b as usize] = true
+    }
+
+    t
+});
 
 #[cfg(test)]
 mod tests {
@@ -74,7 +130,7 @@ mod tests {
             .parse("Host: localhost:42069\r\n\r\n".as_bytes())
             .unwrap();
 
-        assert_eq!("localhost:42069", headers.headers["Host"]);
+        assert_eq!("localhost:42069", headers.get("HOST").unwrap());
         assert_eq!(25, n);
         assert_eq!(done, true);
     }
@@ -87,9 +143,24 @@ mod tests {
             .parse("Host: localhost:42069\r\nFooFoo:       barbar    \r\n\r\n".as_bytes())
             .unwrap();
 
-        assert_eq!("localhost:42069", headers.headers["Host"]);
-        assert_eq!("barbar", headers.headers["FooFoo"]);
+        assert_eq!("localhost:42069", headers.get("HOST").unwrap());
+        assert_eq!("barbar", headers.get("FooFoo").unwrap());
         assert_eq!(51, n);
+        assert_eq!(done, true);
+    }
+
+    #[test]
+    fn test_header_parse_multiple_value() {
+        let mut headers = Headers::new();
+
+        let (_, done) = headers
+            .parse("Host: localhost:42069\r\nHost: localhost:42068\r\n\r\n".as_bytes())
+            .unwrap();
+
+        assert_eq!(
+            "localhost:42069,localhost:42068",
+            headers.get("HOST").unwrap()
+        );
         assert_eq!(done, true);
     }
 
@@ -98,6 +169,15 @@ mod tests {
         let mut headers = Headers::new();
 
         let r = headers.parse("       Host : localhost:42069       \r\n\r\n".as_bytes());
+
+        assert!(r.is_err())
+    }
+
+    #[test]
+    fn invalid_token() {
+        let mut headers = Headers::new();
+
+        let r = headers.parse("       H@st : localhost:42069       \r\n\r\n".as_bytes());
 
         assert!(r.is_err())
     }
