@@ -19,12 +19,16 @@ impl Headers {
                 .windows(SEPARATOR.len())
                 .position(|b| b == SEPARATOR)
             {
+                println!("parsing header: ({:?}) - {:?}", read, i);
                 if i == 0 {
                     // EMPTY HEADER
                     done = true;
+                    read += SEPARATOR.len();
                     break;
                 }
-                let (name, value) = Self::parse_header(&b[..i])?;
+
+                println!("header: {:?}", std::str::from_utf8(&b[read..i]));
+                let (name, value) = Self::parse_header(&b[read..read + i])?;
 
                 read += i + SEPARATOR.len();
 
@@ -71,7 +75,21 @@ mod tests {
             .unwrap();
 
         assert_eq!("localhost:42069", headers.headers["Host"]);
-        assert_eq!(23, n);
+        assert_eq!(25, n);
+        assert_eq!(done, true);
+    }
+
+    #[test]
+    fn test_header_parse_double() {
+        let mut headers = Headers::new();
+
+        let (n, done) = headers
+            .parse("Host: localhost:42069\r\nFooFoo:       barbar    \r\n\r\n".as_bytes())
+            .unwrap();
+
+        assert_eq!("localhost:42069", headers.headers["Host"]);
+        assert_eq!("barbar", headers.headers["FooFoo"]);
+        assert_eq!(51, n);
         assert_eq!(done, true);
     }
 
