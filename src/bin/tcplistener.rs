@@ -12,6 +12,7 @@ fn main() -> Result<(), anyhow::Error> {
             let request = Request::from_reader(socket)?;
 
             println!("{}", request.request_line.unwrap());
+            println!("{}", request.headers);
 
             println!("file transfer complete. shutting down");
         }
