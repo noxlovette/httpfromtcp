@@ -1,9 +1,10 @@
-use crate::{HTTPParsingError, SEPARATOR};
+use crate::{HTTPParsingError, Headers, SEPARATOR};
 use std::{fmt, io::Read};
 
 #[derive(Default)]
 pub struct Request {
     pub request_line: Option<RequestLine>,
+    pub headers: Headers,
     pub state: ParserState,
 }
 
@@ -12,6 +13,8 @@ pub enum ParserState {
     #[default]
     Init,
     Done,
+    Headers,
+    Error,
 }
 
 pub struct RequestLine {
@@ -61,9 +64,11 @@ impl Request {
     fn parse(&mut self, data: &[u8]) -> Result<usize, HTTPParsingError> {
         let mut read: usize = 0;
         loop {
+            let current_data = &data[read..];
+
             match self.state {
                 ParserState::Init => {
-                    let (rl, n) = Self::parse_request_line(&data[read..])?;
+                    let (rl, n) = Self::parse_request_line(current_data)?;
 
                     if n == 0 {
                         break;
@@ -71,12 +76,24 @@ impl Request {
                     self.request_line = rl;
                     read += n;
 
-                    self.state = ParserState::Done;
+                    self.state = ParserState::Headers;
+                }
+                ParserState::Headers => {
+                    let (n, done) = self.headers.parse(current_data)?;
+
+                    if n == 0 {
+                        break;
+                    }
+                    read += n;
+                    if done {
+                        self.state = ParserState::Done;
+                    }
                 }
                 ParserState::Done => break,
+
+                ParserState::Error => return Err(HTTPParsingError::Parser),
             }
         }
-
         return Ok(read);
     }
 
@@ -204,6 +221,28 @@ mod tests {
         assert_eq!("GET", rl.method);
         assert_eq!("/coffee", rl.request_target);
         assert_eq!("1.1", rl.http_version);
+    }
+
+    #[test]
+    fn good_parse_headers() {
+        let r = Request::from_reader(
+            ChunkReader::new("GET / HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n", 3),
+        ).unwrap();
+
+        let h = r.headers;
+        assert_eq!("localhost:42069", h.get("host").unwrap());
+        assert_eq!("curl/7.81.0", h.get("user-agent").unwrap());
+        assert_eq!("*/*", h.get("accept").unwrap());
+    }
+
+    #[test]
+    fn bad_parse_headers() {
+        let r = Request::from_reader(ChunkReader::new(
+            "GET / HTTP/1.1\r\nHost localhost:42069\r\n\r\n",
+            3,
+        ));
+
+        assert!(r.is_err());
     }
 
     #[test]

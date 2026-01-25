@@ -2,6 +2,7 @@ use crate::{HTTPParsingError, SEPARATOR};
 use std::fmt::Write;
 use std::{collections::HashMap, sync::LazyLock};
 
+#[derive(Debug, Default)]
 pub struct Headers {
     pub headers: HashMap<String, String>,
 }

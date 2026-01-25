@@ -29,6 +29,9 @@ pub enum HTTPParsingError {
     #[error("invalid token")]
     BadToken,
 
+    #[error("parser error")]
+    Parser,
+
     #[error("reader error")]
     IOError(#[from] io::Error),
 
