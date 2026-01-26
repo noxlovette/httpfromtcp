@@ -1,11 +1,12 @@
-use crate::{HTTPParsingError, Headers, SEPARATOR};
-use std::{fmt, io::Read};
+use crate::{HTTPParsingError, Headers, RequestLine};
+use std::io::Read;
 
 #[derive(Default)]
 pub struct Request {
     pub request_line: Option<RequestLine>,
     pub headers: Headers,
     pub state: ParserState,
+    pub body: String,
 }
 
 #[derive(PartialEq, Default)]
@@ -14,24 +15,9 @@ pub enum ParserState {
     Init,
     Done,
     Headers,
+    Body,
     Error,
 }
-
-pub struct RequestLine {
-    pub http_version: String,
-    pub request_target: String,
-    pub method: String,
-}
-
-impl fmt::Display for RequestLine {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "Request line:")?;
-        writeln!(f, "- Method: {}", self.method)?;
-        writeln!(f, "- Target: {}", self.request_target)?;
-        write!(f, "- Version: {}", self.http_version)
-    }
-}
-
 impl Request {
     pub fn new() -> Self {
         Self::default()
@@ -86,6 +72,19 @@ impl Request {
                     }
                     read += n;
                     if done {
+                        self.state = ParserState::Body;
+                    }
+                }
+                ParserState::Body => {
+                    let (n, done) = self.parse_body(current_data)?;
+
+                    if n == 0 || current_data.len() == 0 {
+                        break;
+                    }
+
+                    read += n;
+
+                    if done {
                         self.state = ParserState::Done;
                     }
                 }
@@ -95,67 +94,6 @@ impl Request {
             }
         }
         return Ok(read);
-    }
-
-    fn parse_request_line(b: &[u8]) -> Result<(Option<RequestLine>, usize), HTTPParsingError> {
-        if let Some(i) = b.windows(SEPARATOR.len()).position(|w| w == SEPARATOR) {
-            let start_line = &b[..i];
-
-            let read = i + SEPARATOR.len();
-
-            let mut parts = start_line.split(|&b| b == b' ');
-
-            let method = parts
-                .next()
-                .filter(|tok| !tok.is_empty() && tok.iter().all(|&c| c.is_ascii_uppercase()))
-                .and_then(|tok| std::str::from_utf8(tok).ok())
-                .ok_or(HTTPParsingError::BadRequestLine)?
-                .to_string();
-
-            let request_target = parts
-                .next()
-                .filter(|t| !t.is_empty()) // add your target rules here
-                .and_then(|tok| std::str::from_utf8(tok).ok())
-                .ok_or(HTTPParsingError::BadRequestLine)?
-                .to_string();
-
-            let http_version = parts
-                .next()
-                .ok_or(HTTPParsingError::BadRequestLine)
-                .and_then(|tok| {
-                    std::str::from_utf8(tok).map_err(|_| HTTPParsingError::BadRequestLine)
-                })
-                .and_then(|s| {
-                    let (proto, v) = s.split_once('/').ok_or(HTTPParsingError::BadRequestLine)?;
-                    if proto != "HTTP" || !(v == "1.1" || v == "1.0") {
-                        return Err(HTTPParsingError::BadRequestLine);
-                    }
-                    Ok(v.to_string())
-                })?;
-
-            if parts.next().is_some() {
-                return Err(HTTPParsingError::BadRequestLine);
-            }
-
-            let rl = RequestLine {
-                method,
-                request_target,
-                http_version,
-            };
-
-            if !rl.valid_http() {
-                return Err(HTTPParsingError::UnsupportedHTTPVersion);
-            }
-            Ok((Some(rl), read))
-        } else {
-            Ok((None, 0))
-        }
-    }
-}
-
-impl RequestLine {
-    fn valid_http(&self) -> bool {
-        self.http_version == "1.1"
     }
 }
 
@@ -226,13 +164,58 @@ mod tests {
     #[test]
     fn good_parse_headers() {
         let r = Request::from_reader(
-            ChunkReader::new("GET / HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n", 3),
+            ChunkReader::new("GET / HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n ", 3),
         ).unwrap();
 
         let h = r.headers;
         assert_eq!("localhost:42069", h.get("host").unwrap());
         assert_eq!("curl/7.81.0", h.get("user-agent").unwrap());
         assert_eq!("*/*", h.get("accept").unwrap());
+    }
+
+    #[test]
+    fn good_parse_body() {
+        let r = Request::from_reader(ChunkReader::new(
+            "POST /submit HTTP/1.1\r\nHost: localhost:42069\r\nContent-Length: 13\r\n\r\nhello world!\n",
+            3,
+        ))
+        .unwrap();
+
+        assert_eq!("hello world!\n", r.body);
+    }
+    #[test]
+    fn good_parse_empty_body_no_cl_no_body() {
+        let r = Request::from_reader(ChunkReader::new(
+            "POST /submit HTTP/1.1\r\nHost: localhost:42069\r\n\r\n
+		",
+            3,
+        ));
+
+        assert!(r.is_ok())
+    }
+    #[test]
+    fn good_parse_empty_body_no_cl_empty_body() {
+        let r = Request::from_reader(ChunkReader::new(
+            "POST /submit HTTP/1.1\r\nHost: localhost:42069\r\n\r\n
+		",
+            3,
+        ));
+
+        assert!(r.is_ok())
+    }
+
+    #[test]
+    fn bad_parse_body_shorter_content_length() {
+        let r = Request::from_reader(ChunkReader::new(
+            "POST /submit HTTP/1.1\r\n
+		Host: localhost:42069\r\n
+		Content-Length: 20\r\n
+		\r\n
+		hello world!\n",
+            3,
+        ));
+
+        assert!(r.is_err());
     }
 
     #[test]

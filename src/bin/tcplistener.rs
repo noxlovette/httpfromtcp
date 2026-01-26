@@ -13,8 +13,8 @@ fn main() -> Result<(), anyhow::Error> {
 
             println!("{}", request.request_line.unwrap());
             println!("{}", request.headers);
-
-            println!("file transfer complete. shutting down");
+            println!("Body:");
+            println!("{}", request.body);
         }
         Err(e) => println!("couldn't get client: {e:?}"),
     }

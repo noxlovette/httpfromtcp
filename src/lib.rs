@@ -1,9 +1,13 @@
+mod body;
 mod headers;
 mod request;
-use std::{fmt, io};
+mod request_line;
+
+use std::{fmt, io, num::ParseIntError, str::Utf8Error};
 
 pub use headers::*;
 pub use request::*;
+pub use request_line::*;
 use thiserror::Error;
 
 pub enum HTTPMethod {
@@ -28,6 +32,8 @@ pub enum HTTPParsingError {
     BadFieldLine,
     #[error("invalid token")]
     BadToken,
+    #[error("invalid body")]
+    BadBody,
 
     #[error("parser error")]
     Parser,
@@ -37,4 +43,10 @@ pub enum HTTPParsingError {
 
     #[error("formatting error")]
     FmtError(#[from] fmt::Error),
+
+    #[error("int parsing error")]
+    IntError(#[from] ParseIntError),
+
+    #[error("uft8 parsing error")]
+    UtfError(#[from] Utf8Error),
 }
