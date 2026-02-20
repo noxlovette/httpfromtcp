@@ -1,9 +1,8 @@
+use httpfromtcp::{Request, SERVER_PORT};
 use std::net::TcpListener;
 
-use httpfromtcp::Request;
-
 fn main() -> Result<(), anyhow::Error> {
-    let l = TcpListener::bind("127.0.0.1:42069").unwrap();
+    let l = TcpListener::bind(("127.0.0.1", SERVER_PORT)).unwrap();
 
     match l.accept() {
         Ok((socket, addr)) => {
@@ -16,7 +15,7 @@ fn main() -> Result<(), anyhow::Error> {
             println!("Body:");
             println!("{}", request.body);
         }
-        Err(e) => println!("couldn't get client: {e:?}"),
+        Err(e) => eprintln!("couldn't get client: {e:?}"),
     }
 
     Ok(())

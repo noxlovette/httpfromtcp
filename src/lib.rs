@@ -2,12 +2,14 @@ mod body;
 mod headers;
 mod request;
 mod request_line;
-
+mod server;
+pub const SERVER_PORT: u16 = 42069;
 use std::{fmt, io, num::ParseIntError, str::Utf8Error};
 
 pub use headers::*;
 pub use request::*;
 pub use request_line::*;
+pub use server::*;
 use thiserror::Error;
 
 pub enum HTTPMethod {
@@ -49,4 +51,10 @@ pub enum HTTPParsingError {
 
     #[error("uft8 parsing error")]
     UtfError(#[from] Utf8Error),
+}
+
+#[derive(Error, Debug)]
+pub enum ServerError {
+    #[error("IO error")]
+    IOError(#[from] io::Error),
 }
