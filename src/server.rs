@@ -1,29 +1,35 @@
-use crate::{SERVER_PORT, ServerError};
-use std::{io::Write, net::TcpListener};
-use tokio::sync::watch;
+use crate::{Headers, SERVER_PORT, ServerError, StatusCode};
+use std::net::TcpListener;
 
 pub struct Serve {
     listener: TcpListener,
 }
 
 impl Serve {
-    async fn run(&self) -> Result<(), ServerError> {
+    async fn run(self) -> Result<(), ServerError> {
         loop {
             let (mut io, remote_addr) = self.listener.accept()?;
 
             println!("connection {remote_addr:?} accepted");
 
-            let message = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 13\r\n\r\nHello World!";
-
             tokio::spawn(async move {
                 loop {
-                    if let Err(e) = io.write_all(message.as_bytes()) {
+                    if let Err(e) = StatusCode::StatusOk.write(&mut io) {
+                        eprintln!("{e}");
+                        break;
+                    }
+
+                    if let Err(e) = Headers::default_headers(0).and_then(|h| h.write(&mut io)) {
                         eprintln!("{e}");
                         break;
                     }
                 }
             });
+
+            break;
         }
+
+        Ok(self.close())
     }
 
     pub async fn serve(port: Option<u16>) -> Result<(), ServerError> {
