@@ -4,12 +4,6 @@ use crate::{Headers, ServerError};
 
 pub struct Response;
 
-pub enum StatusCode {
-    StatusOk = 200,
-    BadRequest = 400,
-    InternalServerError = 500,
-}
-
 impl StatusCode {
     pub fn write(&self, w: &mut impl Write) -> Result<usize, ServerError> {
         match self {

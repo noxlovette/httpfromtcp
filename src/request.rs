@@ -1,23 +1,20 @@
-use crate::{HTTPParsingError, Headers, RequestLine};
+use crate::{HTTPParsingError, Headers, RequestLine, Version};
 use std::io::Read;
 
 #[derive(Default)]
 pub struct Request {
-    pub request_line: Option<RequestLine>,
-    pub headers: Headers,
-    pub state: ParserState,
+    pub head: Parts,
     pub body: String,
 }
 
-#[derive(PartialEq, Default)]
-pub enum ParserState {
-    #[default]
-    Init,
-    Done,
-    Headers,
-    Body,
-    Error,
+#[derive(Default)]
+pub struct Parts {
+    pub method: String,
+    pub uri: String,
+    pub version: Version,
+    pub headers: Headers,
 }
+
 impl Request {
     pub fn new() -> Self {
         Self::default()

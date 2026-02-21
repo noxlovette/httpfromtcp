@@ -1,5 +1,10 @@
-use crate::{Headers, SERVER_PORT, ServerError, StatusCode};
-use std::net::TcpListener;
+use crate::{Headers, Request, SERVER_PORT, ServerError, StatusCode};
+use std::{
+    io::{BufWriter, Write},
+    net::TcpListener,
+};
+
+type Handler = fn(&mut dyn Write, &Request) -> Result<(), ServerError>;
 
 pub struct Serve {
     listener: TcpListener,
@@ -11,6 +16,9 @@ impl Serve {
             let (mut io, remote_addr) = self.listener.accept()?;
 
             println!("connection {remote_addr:?} accepted");
+
+            let writer = BufWriter::<Vec<u8>>::new(vec![]);
+            let r = Request::from_reader(&io)?;
 
             tokio::spawn(async move {
                 loop {
