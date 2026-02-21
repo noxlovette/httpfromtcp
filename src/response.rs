@@ -1,15 +1,18 @@
 use std::io::Write;
 
-use crate::{Headers, ServerError};
+use crate::{Headers, ServerError, StatusCode};
 
 pub struct Response;
 
 impl StatusCode {
     pub fn write(&self, w: &mut impl Write) -> Result<usize, ServerError> {
         match self {
-            Self::StatusOk => Ok(w.write("HTTP/1.1 200 OK\r\n".as_bytes())?),
-            Self::InternalServerError => Ok(w.write("HTTP/1.1 400 Bad Request\r\n".as_bytes())?),
-            Self::BadRequest => Ok(w.write("HTTP/1.1 500 Internal Server Error\r\n".as_bytes())?),
+            &StatusCode::OK => Ok(w.write("HTTP/1.1 200 OK\r\n".as_bytes())?),
+            &StatusCode::BAD_REQUEST => Ok(w.write("HTTP/1.1 400 Bad Request\r\n".as_bytes())?),
+            &StatusCode::INTERNAL_SERVER_ERROR => {
+                Ok(w.write("HTTP/1.1 500 Internal Server Error\r\n".as_bytes())?)
+            }
+            _ => Err(ServerError::Internal),
         }
     }
 }

@@ -6,6 +6,7 @@ mod status;
 mod version;
 
 pub use headers::Headers;
+pub use method::*;
 pub use request_line::RequestLine;
 pub use status::StatusCode;
 pub use version::Version;

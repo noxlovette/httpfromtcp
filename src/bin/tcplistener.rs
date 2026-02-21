@@ -10,8 +10,8 @@ fn main() -> Result<(), anyhow::Error> {
 
             let request = Request::from_reader(socket)?;
 
-            println!("{}", request.request_line.unwrap());
-            println!("{}", request.headers);
+            println!("Head:");
+            println!("{}", request.head);
             println!("Body:");
             println!("{}", request.body);
         }

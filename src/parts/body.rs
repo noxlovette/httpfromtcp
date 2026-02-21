@@ -4,7 +4,7 @@ impl Request {
     pub fn parse_body(&mut self, b: &[u8]) -> Result<(usize, bool), HTTPParsingError> {
         let (mut read, mut done) = (0, false);
 
-        if let Some(cl) = self.headers.get("content-length") {
+        if let Some(cl) = self.head.headers.get("content-length") {
             let n: usize = cl.parse()?;
             let remaining = n - self.body.len();
             let m = remaining.min(b.len());

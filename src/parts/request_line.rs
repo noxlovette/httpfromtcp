@@ -1,6 +1,6 @@
 use crate::{HTTPParsingError, Request, SEPARATOR, Version, parts::method::Method};
-
 use std::fmt;
+
 pub struct RequestLine {
     pub version: Version,
     pub uri: String,

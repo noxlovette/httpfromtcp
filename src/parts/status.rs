@@ -2,6 +2,7 @@ use std::num::NonZeroU16;
 
 use crate::HTTPParsingError;
 
+#[derive(PartialEq)]
 pub struct StatusCode(NonZeroU16);
 
 impl StatusCode {
@@ -23,4 +24,10 @@ impl StatusCode {
             .map(StatusCode)
             .ok_or_else(|| HTTPParsingError::BadStatusCode)
     }
+
+    pub const OK: StatusCode = StatusCode(unsafe { NonZeroU16::new_unchecked(200) });
+    pub const INTERNAL_SERVER_ERROR: StatusCode =
+        StatusCode(unsafe { NonZeroU16::new_unchecked(500) });
+
+    pub const BAD_REQUEST: StatusCode = StatusCode(unsafe { NonZeroU16::new_unchecked(400) });
 }

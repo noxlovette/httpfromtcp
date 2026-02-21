@@ -5,12 +5,30 @@ use crate::HTTPParsingError;
 
 use self::Inner::*;
 
+#[derive(PartialEq)]
 enum Inner {
     Get,
     Post,
     Put,
     Patch,
     Delete,
+}
+impl Default for Method {
+    fn default() -> Self {
+        Self(Get)
+    }
+}
+
+impl PartialEq<str> for Method {
+    fn eq(&self, other: &str) -> bool {
+        self.as_ref() == other
+    }
+}
+
+impl PartialEq<&str> for Method {
+    fn eq(&self, other: &&str) -> bool {
+        self.as_ref() == *other
+    }
 }
 
 impl Method {

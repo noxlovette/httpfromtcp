@@ -1,6 +1,5 @@
-use std::fmt;
-
 use crate::HTTPParsingError;
+use std::fmt;
 
 #[derive(Default)]
 pub struct Version(Http);
@@ -26,6 +25,11 @@ impl fmt::Debug for Version {
 }
 
 impl Version {
+    pub fn as_str(&self) -> &str {
+        match self.0 {
+            Http::Http11 => "1.1",
+        }
+    }
     pub fn from_bytes(src: &[u8]) -> Result<Self, HTTPParsingError> {
         let mut parts = src.split(|&b| b == b'/');
 

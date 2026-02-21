@@ -1,5 +1,5 @@
 use crate::{HTTPParsingError, SEPARATOR};
-use std::fmt::{self, Write};
+use std::fmt::Write;
 use std::{collections::HashMap, sync::LazyLock};
 
 #[derive(Debug, Default)]
@@ -7,15 +7,6 @@ pub struct Headers {
     pub headers: HashMap<String, String>,
 }
 
-impl fmt::Display for Headers {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "Headers:")?;
-        for (k, v) in self.headers.iter() {
-            writeln!(f, "– {}: {}", k, v)?;
-        }
-        Ok(())
-    }
-}
 impl Headers {
     pub fn new() -> Self {
         Self {

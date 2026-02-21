@@ -2,8 +2,8 @@
 pub enum ParserState {
     #[default]
     Init,
-    Done,
     Headers,
     Body,
+    Done,
     Error,
 }

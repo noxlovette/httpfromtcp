@@ -22,7 +22,7 @@ impl Serve {
 
             tokio::spawn(async move {
                 loop {
-                    if let Err(e) = StatusCode::StatusOk.write(&mut io) {
+                    if let Err(e) = StatusCode::OK.write(&mut io) {
                         eprintln!("{e}");
                         break;
                     }
