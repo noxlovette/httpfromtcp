@@ -41,6 +41,9 @@ pub enum ServerError {
     #[error("internal error")]
     Internal,
 
+    #[error("bad request")]
+    BadRequest,
+
     #[error("IO error")]
     IOError(#[from] io::Error),
 

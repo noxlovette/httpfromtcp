@@ -5,6 +5,12 @@ use crate::HTTPParsingError;
 #[derive(PartialEq)]
 pub struct StatusCode(NonZeroU16);
 
+impl Default for StatusCode {
+    fn default() -> Self {
+        Self::OK
+    }
+}
+
 impl StatusCode {
     pub fn from_bytes(src: &[u8]) -> Result<StatusCode, HTTPParsingError> {
         if src.len() != 3 {

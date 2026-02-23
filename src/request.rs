@@ -1,5 +1,6 @@
 use crate::{HTTPParsingError, Headers, Method, ParserState, Version};
-use std::{fmt, io::Read};
+use std::{fmt, io::Read, task::Context};
+use tokio::{io::AsyncRead, net::TcpStream};
 
 #[derive(Default)]
 pub struct Request {
@@ -16,7 +17,7 @@ pub struct Parts {
     pub headers: Headers,
 }
 
-impl fmt::Display for Parts {
+impl fmt::Debug for Parts {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "- Method: {:?}", self.method)?;
         writeln!(f, "- Target: {:?}", self.uri)?;
@@ -46,6 +47,26 @@ impl Request {
         let mut buf_len = 0;
         while !req.done() {
             let n = r.read(&mut buf[buf_len..])?;
+            if n == 0 {
+                break;
+            }
+            buf_len += n;
+
+            let read = req.parse(&buf[..buf_len])?;
+            buf.copy_within(read..buf_len, 0);
+            buf_len -= read;
+        }
+
+        Ok(req)
+    }
+
+    pub fn from_reader_async(r: &TcpStream) -> Result<Self, HTTPParsingError> {
+        let mut req = Request::new();
+
+        let mut buf = [0u8; 1024];
+        let mut buf_len = 0;
+        while !req.done() {
+            let n = r.try_read(&mut buf[buf_len..])?;
             if n == 0 {
                 break;
             }

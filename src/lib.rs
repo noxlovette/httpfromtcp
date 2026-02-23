@@ -1,4 +1,6 @@
+mod decoder;
 mod error;
+mod io;
 mod parser;
 mod parts;
 mod request;
@@ -10,26 +12,8 @@ pub use parser::*;
 pub const SERVER_PORT: u16 = 42069;
 
 pub use parts::*;
-pub use request::*;
-pub use response::*;
+pub use request::Request;
+pub use response::{IntoResponse, Response};
 pub use server::*;
 
 const SEPARATOR: &[u8] = b"\r\n";
-
-pub trait IntoResponse {
-    #[must_use]
-    fn into_response(self) -> Response;
-}
-
-impl<T, E> IntoResponse for Result<T, E>
-where
-    T: IntoResponse,
-    E: IntoResponse,
-{
-    fn into_response(self) -> Response {
-        match self {
-            Ok(value) => value.into_response(),
-            Err(err) => err.into_response(),
-        }
-    }
-}

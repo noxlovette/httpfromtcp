@@ -11,7 +11,7 @@ fn main() -> Result<(), anyhow::Error> {
             let request = Request::from_reader(socket)?;
 
             println!("Head:");
-            println!("{}", request.head);
+            println!("{:?}", request.head);
             println!("Body:");
             println!("{}", request.body);
         }

@@ -66,6 +66,13 @@ impl Headers {
     pub fn get(&self, name: &str) -> Option<&String> {
         self.headers.get(&name.to_ascii_lowercase())
     }
+
+    pub fn replace(&mut self, name: &str, value: String) -> Result<(), HTTPParsingError> {
+        self.headers
+            .insert(name.to_ascii_lowercase().into(), value.into());
+
+        Ok(())
+    }
     pub fn set(&mut self, mut name: String, value: String) -> Result<(), HTTPParsingError> {
         name = name.to_ascii_lowercase();
 
