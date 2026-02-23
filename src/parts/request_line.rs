@@ -36,7 +36,7 @@ impl Request {
                 .next()
                 .filter(|t| !t.is_empty())
                 .and_then(|tok| std::str::from_utf8(tok).ok())
-                .ok_or(HTTPParsingError::BadRequestLine)?
+                .ok_or_else(|| HTTPParsingError::BadRequestLine)?
                 .to_string();
 
             let version =
