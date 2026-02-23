@@ -2,7 +2,7 @@ use std::num::NonZeroU16;
 
 use crate::HTTPParsingError;
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 pub struct StatusCode(NonZeroU16);
 
 impl Default for StatusCode {

@@ -8,7 +8,7 @@ impl Version {
     pub const HTTP_11: Version = Version(Http::Http11);
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 enum Http {
     #[default]
     Http11,
@@ -27,7 +27,7 @@ impl fmt::Debug for Version {
 impl Version {
     pub fn as_str(&self) -> &str {
         match self.0 {
-            Http::Http11 => "1.1",
+            Http::Http11 => "HTTP/1.1",
         }
     }
     pub fn from_bytes(src: &[u8]) -> Result<Self, HTTPParsingError> {

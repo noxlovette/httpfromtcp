@@ -1,14 +1,16 @@
-mod decoder;
+mod encoder;
 mod error;
-mod io;
 mod parser;
 mod parts;
+mod pool;
 mod request;
 mod response;
 mod server;
 
+pub use encoder::*;
 pub use error::*;
 pub use parser::*;
+pub use pool::*;
 pub const SERVER_PORT: u16 = 42069;
 
 pub use parts::*;

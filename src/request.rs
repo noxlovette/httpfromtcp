@@ -1,6 +1,5 @@
 use crate::{HTTPParsingError, Headers, Method, ParserState, Version};
-use std::{fmt, io::Read, task::Context};
-use tokio::{io::AsyncRead, net::TcpStream};
+use std::{fmt, io::Read};
 
 #[derive(Default)]
 pub struct Request {
@@ -60,26 +59,6 @@ impl Request {
         Ok(req)
     }
 
-    pub fn from_reader_async(r: &TcpStream) -> Result<Self, HTTPParsingError> {
-        let mut req = Request::new();
-
-        let mut buf = [0u8; 1024];
-        let mut buf_len = 0;
-        while !req.done() {
-            let n = r.try_read(&mut buf[buf_len..])?;
-            if n == 0 {
-                break;
-            }
-            buf_len += n;
-
-            let read = req.parse(&buf[..buf_len])?;
-            buf.copy_within(read..buf_len, 0);
-            buf_len -= read;
-        }
-
-        Ok(req)
-    }
-
     fn parse(&mut self, data: &[u8]) -> Result<usize, HTTPParsingError> {
         let mut read: usize = 0;
         loop {
@@ -117,15 +96,15 @@ impl Request {
                 ParserState::Body => {
                     let (n, done) = self.parse_body(current_data)?;
 
+                    if done {
+                        self.state = ParserState::Done;
+                    }
+
                     if n == 0 || current_data.len() == 0 {
                         break;
                     }
 
                     read += n;
-
-                    if done {
-                        self.state = ParserState::Done;
-                    }
                 }
                 ParserState::Done => break,
 

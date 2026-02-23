@@ -1,4 +1,4 @@
-use tokio::net::TcpStream;
+use core::fmt;
 
 use crate::{Headers, ServerError, StatusCode, Version};
 
@@ -10,9 +10,30 @@ pub struct Response {
 
 #[derive(Default)]
 pub struct Parts {
-    pub status: StatusCode,
     pub version: Version,
+    pub status: StatusCode,
     pub headers: Headers,
+}
+
+impl fmt::Debug for Response {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "Head {:?}", self.head)?;
+        writeln!(f, "Body {:?}", self.body)?;
+
+        Ok(())
+    }
+}
+impl fmt::Debug for Parts {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "- Version: {:?}", self.version)?;
+        writeln!(f, "- Status: {:?}", self.status)?;
+        writeln!(f, "Headers:")?;
+        for (k, v) in self.headers.headers.iter() {
+            writeln!(f, "– {}: {}", k, v)?;
+        }
+
+        Ok(())
+    }
 }
 
 impl Response {
@@ -24,63 +45,15 @@ impl Response {
                 .replace("content-length", b.len().to_string())
                 .ok();
             r.body = b;
+
+            println!("{:?}", r);
             r
         } else {
-            Self::default()
+            let r = Self::default();
+            println!("{:?}", r);
+
+            r
         }
-    }
-}
-
-impl Parts {
-    fn write(&self, w: &mut TcpStream) -> Result<usize, ServerError> {
-        let mut n = 0;
-        n += self.version.write(w)?;
-        n += self.status.write(w)?;
-        n += self.headers.write(w)?;
-        Ok(n)
-    }
-}
-
-impl Response {
-    pub async fn write(&self, w: &mut TcpStream) -> Result<usize, ServerError> {
-        w.writable().await?;
-
-        let mut n = 0;
-        n += self.head.write(w)?;
-        n += w.try_write(self.body.as_bytes())?;
-
-        Ok(n)
-    }
-}
-
-impl StatusCode {
-    fn write(&self, w: &TcpStream) -> Result<usize, ServerError> {
-        match self {
-            &StatusCode::OK => Ok(w.try_write("HTTP/1.1 200 OK\r\n".as_bytes())?),
-            &StatusCode::BAD_REQUEST => Ok(w.try_write("HTTP/1.1 400 Bad Request\r\n".as_bytes())?),
-            &StatusCode::INTERNAL_SERVER_ERROR => {
-                Ok(w.try_write("HTTP/1.1 500 Internal Server Error\r\n".as_bytes())?)
-            }
-            _ => Err(ServerError::Internal),
-        }
-    }
-}
-
-impl Version {
-    fn write(&self, w: &TcpStream) -> Result<usize, ServerError> {
-        Ok(w.try_write(self.as_str().as_bytes())?)
-    }
-}
-
-impl Headers {
-    fn write(&self, w: &TcpStream) -> Result<usize, ServerError> {
-        let mut n = self.headers.iter().try_fold(0 as usize, |acc, h| {
-            Ok::<usize, ServerError>(acc + w.try_write(format!("{}: {}\r\n", h.0, h.1).as_bytes())?)
-        })?;
-
-        n += w.try_write("\r\n".as_bytes())?;
-
-        Ok(n)
     }
 }
 

@@ -1,56 +1,47 @@
-use crate::{IntoResponse, Request, Response, SERVER_PORT, ServerError};
-use tokio::net::TcpListener;
+use crate::{Encode, IntoResponse, Request, Response, SERVER_PORT, ServerError, ThreadPool};
+use std::net::{TcpListener, TcpStream};
 
-pub struct Serve {
-    listener: TcpListener,
-}
+pub struct Serve;
 
 impl Serve {
-    fn handler(req: &Request) -> impl IntoResponse {
-        match req.head.uri.as_ref() {
-            "/myproblem" => return Err(ServerError::Internal),
-            "/yourproblem" => return Err(ServerError::BadRequest),
+    fn handler(mut stream: TcpStream) {
+        let req = Request::from_reader(&stream).unwrap();
+        println!("request received");
+        let res = match req.head.uri.as_ref() {
+            "/myproblem" => Err(ServerError::Internal),
+            "/yourproblem" => Err(ServerError::BadRequest),
             _ => {
                 let r = Response::new(Some("All good, frfr".to_string()));
-                return Ok(r);
+                Ok(r)
             }
-        }
+        };
+
+        res.into_response().write(&mut stream).unwrap();
+        println!("response sent");
     }
 
-    async fn run(self) -> Result<(), ServerError> {
-        loop {
-            let (mut io, remote_addr) = self.listener.accept().await?;
+    fn run(self) -> Result<(), ServerError> {
+        let listener = TcpListener::bind(("127.0.0.1", SERVER_PORT))?;
 
-            println!("connection {remote_addr:?} accepted");
+        let pool = ThreadPool::new(4);
 
-            let req = Request::from_reader_async(&io)?;
-            println!("{:?}", req.head);
+        for stream in listener.incoming().take(2) {
+            let stream = stream?;
 
-            tokio::spawn(async move {
-                loop {
-                    let r: Response = Self::handler(&req).into_response();
-                    if let Err(e) = r.write(&mut io).await {
-                        eprint!("{e}");
-                    };
-                    break;
-                }
+            pool.execute(|| {
+                Self::handler(stream);
             });
-
-            break;
         }
 
-        Ok(self.close())
-    }
-
-    pub async fn serve(port: Option<u16>) -> Result<(), ServerError> {
-        let listener = TcpListener::bind(("127.0.0.1", port.unwrap_or(SERVER_PORT))).await?;
-        let server = Self { listener };
-        server.run().await?;
+        drop(pool);
 
         Ok(())
     }
 
-    pub fn close(self) {
-        drop(self.listener)
+    pub fn serve() -> Result<(), ServerError> {
+        let server = Self;
+        server.run()?;
+
+        Ok(())
     }
 }
