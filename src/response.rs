@@ -1,4 +1,5 @@
 use core::fmt;
+use std::fs;
 
 use crate::{Headers, ServerError, StatusCode, Version};
 
@@ -46,14 +47,20 @@ impl Response {
                 .ok();
             r.body = b;
 
-            println!("{:?}", r);
             r
         } else {
             let r = Self::default();
-            println!("{:?}", r);
 
             r
         }
+    }
+
+    pub fn content_type(mut self, content_type: &str) -> Result<Self, ServerError> {
+        self.head
+            .headers
+            .replace("content-type", content_type.to_string())?;
+
+        Ok(self)
     }
 }
 
@@ -72,8 +79,8 @@ impl IntoResponse for ServerError {
     fn into_response(self) -> Response {
         let body = match self {
             Self::IOError(err) => err.to_string(),
-            Self::Internal => "Internal Server Error".to_string(),
-            Self::BadRequest => "Bad Request".to_string(),
+            Self::Internal => fs::read_to_string("500.html").unwrap(),
+            Self::BadRequest => fs::read_to_string("400.html").unwrap(),
             Self::Parsing(err) => err.to_string(),
         };
 
@@ -83,7 +90,9 @@ impl IntoResponse for ServerError {
             ..Default::default()
         };
 
-        Response { head, body }
+        let r = Response { head, body }.content_type("text/html").unwrap();
+
+        r
     }
 }
 

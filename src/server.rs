@@ -1,5 +1,8 @@
 use crate::{Encode, IntoResponse, Request, Response, SERVER_PORT, ServerError, ThreadPool};
-use std::net::{TcpListener, TcpStream};
+use std::{
+    fs, io,
+    net::{TcpListener, TcpStream},
+};
 
 pub struct Serve;
 
@@ -11,7 +14,10 @@ impl Serve {
             "/myproblem" => Err(ServerError::Internal),
             "/yourproblem" => Err(ServerError::BadRequest),
             _ => {
-                let r = Response::new(Some("All good, frfr".to_string()));
+                let r = Response::new(Some(fs::read_to_string("200.html").unwrap()))
+                    .content_type("text/html")
+                    .unwrap();
+
                 Ok(r)
             }
         };
@@ -25,7 +31,7 @@ impl Serve {
 
         let pool = ThreadPool::new(4);
 
-        for stream in listener.incoming().take(2) {
+        for stream in listener.incoming() {
             let stream = stream?;
 
             pool.execute(|| {
