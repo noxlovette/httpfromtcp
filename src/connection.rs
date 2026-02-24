@@ -1,3 +1,5 @@
+use crate::Encode;
+use crate::IntoResponse;
 use crate::{Request, Response, ServerError};
 use std::fs;
 use tokio::io::AsyncWriteExt;
@@ -15,6 +17,7 @@ pub enum ParserState {
 
 pub struct Connection {
     io: TcpStream,
+    req: Request,
     shutting_down: bool,
 }
 
@@ -22,12 +25,14 @@ impl Connection {
     pub fn new(io: TcpStream) -> Self {
         Self {
             io,
+            req: Request::new(),
             shutting_down: false,
         }
     }
 
     pub async fn run(&mut self) -> Result<(), ServerError> {
         self.read().await?;
+        self.write().await?;
         Ok(())
     }
 
@@ -42,11 +47,18 @@ impl Connection {
         if self.shutting_down {
             return Ok(());
         }
-        let req = Request::from_reader(&mut self.io).await?;
+        self.req = Request::from_reader(&mut self.io).await?;
+        tracing::info!("request received:\n {:?}", self.req);
 
-        tracing::info!("request received:\n {req:?}");
+        Ok(())
+    }
 
-        let res = match req.head.uri.as_ref() {
+    async fn write(&mut self) -> Result<(), ServerError> {
+        if self.shutting_down {
+            return Ok(());
+        }
+
+        let res = match self.req.head.uri.as_ref() {
             "/myproblem" => Err(ServerError::Internal),
             "/yourproblem" => Err(ServerError::BadRequest),
             _ => {
@@ -59,12 +71,8 @@ impl Connection {
 
         tracing::info!("response generated:\n {res:?}");
 
-        if self.shutting_down {
-            return Ok(());
-        }
-
-        // res.into_response().write(&mut stream).unwrap();
-        // tracing::info!("response sent");
+        res.into_response().write(&mut self.io).await.unwrap();
+        tracing::info!("response sent");
 
         Ok(())
     }

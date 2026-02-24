@@ -1,4 +1,5 @@
 mod connection;
+mod encoder;
 mod error;
 mod listener;
 mod parts;
@@ -7,6 +8,7 @@ mod response;
 mod server;
 
 pub use connection::*;
+pub use encoder::Encode;
 pub use error::*;
 pub use listener::*;
 pub const SERVER_PORT: u16 = 42069;
