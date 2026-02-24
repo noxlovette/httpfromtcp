@@ -29,7 +29,7 @@ impl fmt::Debug for Parts {
         writeln!(f, "- Version: {:?}", self.version)?;
         writeln!(f, "- Status: {:?}", self.status)?;
         writeln!(f, "Headers:")?;
-        for (k, v) in self.headers.headers.iter() {
+        for (k, v) in self.headers.0.iter() {
             writeln!(f, "– {}: {}", k, v)?;
         }
 

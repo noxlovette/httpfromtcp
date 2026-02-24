@@ -46,7 +46,7 @@ impl Encode for Version {
 
 impl Encode for Headers {
     fn write(&self, w: &mut TcpStream) -> Result<(), ServerError> {
-        self.headers
+        self.0
             .iter()
             .try_for_each(|h| w.write_all(format!("{}: {}\r\n", h.0, h.1).as_bytes()))?;
 

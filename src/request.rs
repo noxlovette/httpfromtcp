@@ -1,5 +1,6 @@
 use crate::{HTTPParsingError, Headers, Method, ParserState, Version};
-use std::{fmt, io::Read};
+use std::fmt::{self};
+use tokio::io::{AsyncRead, AsyncReadExt};
 
 #[derive(Default)]
 pub struct Request {
@@ -22,9 +23,18 @@ impl fmt::Debug for Parts {
         writeln!(f, "- Target: {:?}", self.uri)?;
         writeln!(f, "- Version: {:?}", self.version)?;
         writeln!(f, "Headers:")?;
-        for (k, v) in self.headers.headers.iter() {
+        for (k, v) in self.headers.0.iter() {
             writeln!(f, "– {}: {}", k, v)?;
         }
+
+        Ok(())
+    }
+}
+
+impl fmt::Debug for Request {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "Head: {:?}", self.head)?;
+        writeln!(f, "Body: {:?}", self.body)?;
 
         Ok(())
     }
@@ -39,13 +49,13 @@ impl Request {
         self.state == ParserState::Done
     }
 
-    pub fn from_reader(mut r: impl Read) -> Result<Self, HTTPParsingError> {
+    pub async fn from_reader(mut r: impl AsyncRead + Unpin) -> Result<Self, HTTPParsingError> {
         let mut req = Request::new();
 
         let mut buf = [0u8; 1024];
         let mut buf_len = 0;
         while !req.done() {
-            let n = r.read(&mut buf[buf_len..])?;
+            let n = r.read(&mut buf[buf_len..]).await?;
             if n == 0 {
                 break;
             }
@@ -114,14 +124,18 @@ impl Request {
         return Ok(read);
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::{self, Read};
+    use std::{
+        io,
+        pin::Pin,
+        task::{Context, Poll},
+    };
+    use tokio::io::{AsyncRead, ReadBuf};
 
     struct ChunkReader {
-        data: String,
+        data: Vec<u8>,
         num_bytes_per_read: usize,
         pos: usize,
     }
@@ -129,58 +143,75 @@ mod tests {
     impl ChunkReader {
         fn new(data: &str, num_bytes_per_read: usize) -> Self {
             Self {
-                data: data.to_string(),
+                data: data.as_bytes().to_vec(),
                 num_bytes_per_read,
                 pos: 0,
             }
         }
     }
 
-    impl Read for ChunkReader {
-        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+    impl AsyncRead for ChunkReader {
+        fn poll_read(
+            mut self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            buf: &mut ReadBuf<'_>,
+        ) -> Poll<io::Result<()>> {
             if self.pos >= self.data.len() {
-                return Ok(0); // EOF
+                return Poll::Ready(Ok(())); // EOF (no bytes appended)
             }
 
-            let end_index = (self.pos + self.num_bytes_per_read).min(self.data.len());
+            let remaining = self.data.len() - self.pos;
+            let allowed = self.num_bytes_per_read.min(remaining);
+            let to_copy = allowed.min(buf.remaining());
 
-            let bytes = self.data.as_bytes();
-            let n = buf.len().min(end_index - self.pos);
+            if to_copy == 0 {
+                return Poll::Ready(Ok(()));
+            }
 
-            buf[..n].copy_from_slice(&bytes[self.pos..self.pos + n]);
-            self.pos += n;
+            let end = self.pos + to_copy;
+            buf.put_slice(&self.data[self.pos..end]);
+            self.pos = end;
 
-            Ok(n)
+            Poll::Ready(Ok(()))
         }
     }
 
-    #[test]
-    fn good_get_request_line() {
-        let r = Request::from_reader(
-            ChunkReader::new("GET / HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n", 3)
-        ).unwrap();
+    #[tokio::test]
+    async fn good_get_request_line() {
+        let r = Request::from_reader(ChunkReader::new(
+            "GET / HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n",
+            3,
+        ))
+        .await
+        .unwrap();
 
         assert_eq!("GET", r.head.method.as_str());
         assert_eq!("/", r.head.uri);
-        assert_eq!("1.1", r.head.version.as_str());
+        assert_eq!("HTTP/1.1", r.head.version.as_str());
     }
 
-    #[test]
-    fn good_get_request_line_with_path() {
-        let r = Request::from_reader(
-            ChunkReader::new("GET /coffee HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n", 1),
-        ).unwrap();
+    #[tokio::test]
+    async fn good_get_request_line_with_path() {
+        let r = Request::from_reader(ChunkReader::new(
+            "GET /coffee HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n",
+            1,
+        ))
+        .await
+        .unwrap();
 
         assert_eq!("GET", r.head.method.as_str());
         assert_eq!("/coffee", r.head.uri);
-        assert_eq!("1.1", r.head.version.as_str());
+        assert_eq!("HTTP/1.1", r.head.version.as_str());
     }
 
-    #[test]
-    fn good_parse_headers() {
-        let r = Request::from_reader(
-            ChunkReader::new("GET / HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n ", 3),
-        ).unwrap();
+    #[tokio::test]
+    async fn good_parse_headers() {
+        let r = Request::from_reader(ChunkReader::new(
+            "GET / HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n ",
+            3,
+        ))
+        .await
+        .unwrap();
 
         let h = r.head.headers;
         assert_eq!("localhost:42069", h.get("host").unwrap());
@@ -188,67 +219,70 @@ mod tests {
         assert_eq!("*/*", h.get("accept").unwrap());
     }
 
-    #[test]
-    fn good_parse_body() {
+    #[tokio::test]
+    async fn good_parse_body() {
         let r = Request::from_reader(ChunkReader::new(
             "POST /submit HTTP/1.1\r\nHost: localhost:42069\r\nContent-Length: 13\r\n\r\nhello world!\n",
             3,
         ))
+        .await
         .unwrap();
 
         assert_eq!("hello world!\n", r.body);
     }
-    #[test]
-    fn good_parse_empty_body_no_cl_no_body() {
-        let r = Request::from_reader(ChunkReader::new(
-            "POST /submit HTTP/1.1\r\nHost: localhost:42069\r\n\r\n
-		",
-            3,
-        ));
 
-        assert!(r.is_ok())
-    }
-    #[test]
-    fn good_parse_empty_body_no_cl_empty_body() {
+    #[tokio::test]
+    async fn good_parse_empty_body_no_cl_no_body() {
         let r = Request::from_reader(ChunkReader::new(
-            "POST /submit HTTP/1.1\r\nHost: localhost:42069\r\n\r\n
-		",
+            "POST /submit HTTP/1.1\r\nHost: localhost:42069\r\n\r\n\t\t",
             3,
-        ));
+        ))
+        .await;
 
         assert!(r.is_ok())
     }
 
-    #[test]
-    fn bad_parse_body_shorter_content_length() {
+    #[tokio::test]
+    async fn good_parse_empty_body_no_cl_empty_body() {
         let r = Request::from_reader(ChunkReader::new(
-            "POST /submit HTTP/1.1\r\n
-		Host: localhost:42069\r\n
-		Content-Length: 20\r\n
-		\r\n
-		hello world!\n",
+            "POST /submit HTTP/1.1\r\nHost: localhost:42069\r\n\r\n\t\t",
             3,
-        ));
+        ))
+        .await;
+
+        assert!(r.is_ok())
+    }
+
+    #[tokio::test]
+    async fn bad_parse_body_shorter_content_length() {
+        let r = Request::from_reader(ChunkReader::new(
+            "POST /submit HTTP/1.1\r\nHost: localhost:42069\r\nContent-Length: 20\r\n\r\nhello world!\n",
+            3,
+        ))
+        .await;
 
         assert!(r.is_err());
     }
 
-    #[test]
-    fn bad_parse_headers() {
+    #[tokio::test]
+    async fn bad_parse_headers() {
         let r = Request::from_reader(ChunkReader::new(
             "GET / HTTP/1.1\r\nHost localhost:42069\r\n\r\n",
             3,
-        ));
+        ))
+        .await;
 
         assert!(r.is_err());
     }
 
-    #[test]
-    fn bad_input() {
+    #[tokio::test]
+    async fn bad_input() {
         let r = Request::from_reader(ChunkReader::new(
             "/coffee HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n",
             2,
-        ));
+        ))
+        .await;
+
         assert!(r.is_err());
     }
 }

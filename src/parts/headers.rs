@@ -3,15 +3,11 @@ use std::fmt::Write;
 use std::{collections::HashMap, sync::LazyLock};
 
 #[derive(Debug, Default)]
-pub struct Headers {
-    pub headers: HashMap<String, String>,
-}
+pub struct Headers(pub HashMap<String, String>);
 
 impl Headers {
     pub fn new() -> Self {
-        Self {
-            headers: HashMap::new(),
-        }
+        Self(HashMap::new())
     }
     pub fn parse(&mut self, b: &[u8]) -> Result<(usize, bool), HTTPParsingError> {
         let mut read: usize = 0;
@@ -64,24 +60,29 @@ impl Headers {
     }
 
     pub fn get(&self, name: &str) -> Option<&String> {
-        self.headers.get(&name.to_ascii_lowercase())
+        self.0.get(&name.to_ascii_lowercase())
     }
 
     pub fn replace(&mut self, name: &str, value: String) -> Result<(), HTTPParsingError> {
-        self.headers
+        self.0
             .insert(name.to_ascii_lowercase().into(), value.into());
 
+        Ok(())
+    }
+
+    pub fn delete(&mut self, name: &str) -> Result<(), HTTPParsingError> {
+        let _ = self.0.remove(name);
         Ok(())
     }
     pub fn set(&mut self, mut name: String, value: String) -> Result<(), HTTPParsingError> {
         name = name.to_ascii_lowercase();
 
-        if let Some(v) = self.headers.get(&name) {
+        if let Some(v) = self.0.get(&name) {
             let mut s = String::new();
             write!(s, "{},{}", v, value)?;
-            self.headers.insert(name, s);
+            self.0.insert(name, s);
         } else {
-            self.headers.insert(name, value);
+            self.0.insert(name, value);
         }
         Ok(())
     }

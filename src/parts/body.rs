@@ -1,6 +1,5 @@
-use std::collections::HashMap;
-
 use crate::{HTTPParsingError, Request};
+use std::collections::HashMap;
 
 impl Request {
     pub fn parse_body(&mut self, b: &[u8]) -> Result<(usize, bool), HTTPParsingError> {
