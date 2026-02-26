@@ -58,20 +58,49 @@ impl Connection {
             return Ok(());
         }
 
-        let res = match self.req.head.uri.as_ref() {
-            "/myproblem" => Err(ServerError::Internal),
-            "/yourproblem" => Err(ServerError::BadRequest),
-            _ => {
-                let r = Response::new(Some(fs::read_to_string("200.html").unwrap()))
-                    .content_type("text/html")
-                    .unwrap();
-                Ok(r)
+        let r = if self.req.head.uri.as_str() == "/myproblem" {
+            Err(ServerError::Internal)
+        } else if self.req.head.uri.as_str() == "yourproblem" {
+            Err(ServerError::BadRequest)
+        } else if self.req.head.uri.as_str().contains("/httpbin/stream") {
+            let bin = reqwest::get(
+                self.req
+                    .head
+                    .uri
+                    .as_str()
+                    .replace("/httpbin", "https://httpbin.org"),
+            )
+            .await?;
+
+            let mut body = Vec::<u8>::new();
+            let bytes = bin.bytes().await.unwrap();
+
+            for chunk in bytes.chunks(32) {
+                body.extend_from_slice(format!("{:x}\r\n", chunk.len()).as_bytes());
+
+                body.extend_from_slice(chunk);
+                body.extend_from_slice("\r\n".as_bytes());
             }
+
+            body.extend_from_slice("0\r\n\r\n".as_bytes());
+
+            // suboptimal. the body should probably be Bytes, too
+            let r = Response::new(Some(String::from_utf8(body).unwrap()))
+                .chunked()
+                .unwrap();
+
+            Ok(r)
+        } else {
+            let r = Response::new(Some(fs::read_to_string("200.html").unwrap()))
+                .content_type("text/html")
+                .unwrap();
+            Ok(r)
         };
 
-        tracing::info!("response generated:\n {res:?}");
+        tracing::info!("response generated:\n {r:?}");
 
-        res.into_response().write(&mut self.io).await.unwrap();
+        r.into_response().write(&mut self.io).await.unwrap();
+
         tracing::info!("response sent");
 
         Ok(())

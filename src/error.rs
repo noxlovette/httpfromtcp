@@ -47,6 +47,9 @@ pub enum ServerError {
     #[error("IO error")]
     IOError(#[from] io::Error),
 
+    #[error("Reqwest error")]
+    ReqwestError(#[from] reqwest::Error),
+
     #[error("Parsing error")]
     Parsing(#[from] HTTPParsingError),
 }

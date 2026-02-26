@@ -1,7 +1,6 @@
+use crate::{Headers, ServerError, StatusCode, Version};
 use core::fmt;
 use std::fs;
-
-use crate::{Headers, ServerError, StatusCode, Version};
 
 #[derive(Default)]
 pub struct Response {
@@ -62,10 +61,19 @@ impl Response {
 
         Ok(self)
     }
+
+    pub fn chunked(mut self) -> Result<Self, ServerError> {
+        self.head.headers.delete("content-length")?;
+        self.head
+            .headers
+            .set("transfer-encoding".to_string(), "chunked".to_string())?;
+
+        Ok(self)
+    }
 }
 
 impl Headers {
-    pub fn default_headers(content_length: u16) -> Result<Headers, ServerError> {
+    fn default_headers(content_length: u16) -> Result<Headers, ServerError> {
         let mut h = Headers::new();
         h.set("Content-Length".to_string(), content_length.to_string())?;
         h.set("Connection".to_string(), "closed".to_string())?;
@@ -77,16 +85,23 @@ impl Headers {
 
 impl IntoResponse for ServerError {
     fn into_response(self) -> Response {
-        let body = match self {
-            Self::IOError(err) => err.to_string(),
-            Self::Internal => fs::read_to_string("500.html").unwrap(),
-            Self::BadRequest => fs::read_to_string("400.html").unwrap(),
-            Self::Parsing(err) => err.to_string(),
+        let (body, status) = match self {
+            Self::ReqwestError(err) => (err.to_string(), StatusCode::BAD_REQUEST),
+            Self::IOError(err) => (err.to_string(), StatusCode::INTERNAL_SERVER_ERROR),
+            Self::Internal => (
+                fs::read_to_string("500.html").unwrap(),
+                StatusCode::INTERNAL_SERVER_ERROR,
+            ),
+            Self::BadRequest => (
+                fs::read_to_string("400.html").unwrap(),
+                StatusCode::BAD_REQUEST,
+            ),
+            Self::Parsing(err) => (err.to_string(), StatusCode::INTERNAL_SERVER_ERROR),
         };
 
         let head = Parts {
             headers: Headers::default_headers(body.len() as u16).unwrap_or_default(),
-            status: StatusCode::INTERNAL_SERVER_ERROR,
+            status,
             ..Default::default()
         };
 
