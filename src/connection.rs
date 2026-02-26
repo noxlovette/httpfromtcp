@@ -63,8 +63,17 @@ impl Connection {
 
         let r = if self.req.head.uri.as_str() == "/myproblem" {
             Err(ServerError::Internal)
-        } else if self.req.head.uri.as_str() == "yourproblem" {
+        } else if self.req.head.uri.as_str() == "/yourproblem" {
             Err(ServerError::BadRequest)
+        } else if self.req.head.uri.as_str() == "/video" {
+            let v = fs::read("assets/vim.mp4").unwrap();
+            let cl = v.len() as u16;
+
+            let r = Response::new(Some(v))
+                .content_type("video/mp4")?
+                .content_length(cl)?;
+
+            Ok(r)
         } else if self.req.head.uri.as_str().contains("/httpbin") {
             let bin = reqwest::get(
                 self.req
@@ -95,7 +104,7 @@ impl Connection {
             trailers.set("X-Content-Length".to_string(), bytes.len().to_string())?;
 
             // suboptimal. the body should probably be Bytes, too
-            let r = Response::new(Some(String::from_utf8(body).unwrap()))
+            let r = Response::new(Some(body))
                 .chunked()
                 .unwrap()
                 .with_sha()
@@ -104,13 +113,11 @@ impl Connection {
 
             Ok(r)
         } else {
-            let r = Response::new(Some(fs::read_to_string("200.html").unwrap()))
+            let r = Response::new(Some(fs::read("200.html").unwrap()))
                 .content_type("text/html")
                 .unwrap();
             Ok(r)
         };
-
-        tracing::info!("response generated:\n {r:?}");
 
         r.into_response().write(&mut self.io).await.unwrap();
 

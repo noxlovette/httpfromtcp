@@ -1,11 +1,12 @@
 use crate::{Headers, ServerError, StatusCode, Version};
+use bytes::Bytes;
 use core::fmt;
 use std::fs;
 
 #[derive(Default)]
 pub struct Response {
     pub head: Parts,
-    pub body: String,
+    pub body: Bytes,
     pub trailers: Headers,
 }
 
@@ -41,15 +42,16 @@ impl fmt::Debug for Parts {
 }
 
 impl Response {
-    pub fn new(body: Option<String>) -> Self {
+    pub fn new(body: Option<impl Into<Bytes>>) -> Self {
         if let Some(b) = body {
+            let bytes = b.into();
             let mut r = Self::default();
             r.head
                 .headers
-                .replace("content-length", b.len().to_string())
+                .replace("content-length", bytes.len().to_string())
                 .ok();
-            r.body = b;
 
+            r.body = bytes;
             r
         } else {
             let r = Self::default();
@@ -92,6 +94,14 @@ impl Response {
 
         self
     }
+
+    pub fn content_length(mut self, cl: u16) -> Result<Self, ServerError> {
+        self.head
+            .headers
+            .replace("content-length", cl.to_string())?;
+
+        Ok(self)
+    }
 }
 
 impl Headers {
@@ -129,7 +139,7 @@ impl IntoResponse for ServerError {
 
         let r = Response {
             head,
-            body,
+            body: body.into(),
             trailers: Headers::default(),
         }
         .content_type("text/html")

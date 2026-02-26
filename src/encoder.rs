@@ -10,7 +10,7 @@ pub trait Encode {
 impl Encode for Response {
     async fn write(&self, w: &mut TcpStream) -> Result<(), ServerError> {
         self.head.write(w).await?;
-        w.write_all(self.body.as_bytes()).await?;
+        w.write_all(&self.body).await?;
         self.trailers.write(w).await?;
 
         Ok(())
