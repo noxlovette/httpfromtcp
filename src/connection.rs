@@ -1,6 +1,9 @@
 use crate::Encode;
+use crate::Headers;
 use crate::IntoResponse;
 use crate::{Request, Response, ServerError};
+use sha2::Digest;
+use sha2::Sha256;
 use std::fs;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
@@ -62,7 +65,7 @@ impl Connection {
             Err(ServerError::Internal)
         } else if self.req.head.uri.as_str() == "yourproblem" {
             Err(ServerError::BadRequest)
-        } else if self.req.head.uri.as_str().contains("/httpbin/stream") {
+        } else if self.req.head.uri.as_str().contains("/httpbin") {
             let bin = reqwest::get(
                 self.req
                     .head
@@ -77,17 +80,27 @@ impl Connection {
 
             for chunk in bytes.chunks(32) {
                 body.extend_from_slice(format!("{:x}\r\n", chunk.len()).as_bytes());
-
                 body.extend_from_slice(chunk);
                 body.extend_from_slice("\r\n".as_bytes());
             }
 
-            body.extend_from_slice("0\r\n\r\n".as_bytes());
+            body.extend_from_slice("0\r\n".as_bytes());
+            let sha = Sha256::digest(&bytes);
+
+            let hex = hex::encode(sha);
+
+            let mut trailers = Headers::new();
+
+            trailers.set("X-Content-SHA256".to_string(), hex)?;
+            trailers.set("X-Content-Length".to_string(), bytes.len().to_string())?;
 
             // suboptimal. the body should probably be Bytes, too
             let r = Response::new(Some(String::from_utf8(body).unwrap()))
                 .chunked()
-                .unwrap();
+                .unwrap()
+                .with_sha()
+                .unwrap()
+                .set_trailers(trailers);
 
             Ok(r)
         } else {

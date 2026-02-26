@@ -6,6 +6,7 @@ use std::fs;
 pub struct Response {
     pub head: Parts,
     pub body: String,
+    pub trailers: Headers,
 }
 
 #[derive(Default)]
@@ -19,7 +20,10 @@ impl fmt::Debug for Response {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "Head {:?}", self.head)?;
         writeln!(f, "Body {:?}", self.body)?;
-
+        writeln!(f, "Trailers")?;
+        for (k, v) in self.trailers.0.iter() {
+            writeln!(f, "– {}: {}", k, v)?;
+        }
         Ok(())
     }
 }
@@ -70,6 +74,24 @@ impl Response {
 
         Ok(self)
     }
+
+    pub fn with_sha(mut self) -> Result<Self, ServerError> {
+        self.head
+            .headers
+            .set("Trailer".to_string(), "X-Content-SHA256".to_string())?;
+
+        self.head
+            .headers
+            .set("Trailer".to_string(), "X-Content-Length".to_string())?;
+
+        Ok(self)
+    }
+
+    pub fn set_trailers(mut self, t: Headers) -> Self {
+        self.trailers = t;
+
+        self
+    }
 }
 
 impl Headers {
@@ -105,7 +127,13 @@ impl IntoResponse for ServerError {
             ..Default::default()
         };
 
-        let r = Response { head, body }.content_type("text/html").unwrap();
+        let r = Response {
+            head,
+            body,
+            trailers: Headers::default(),
+        }
+        .content_type("text/html")
+        .unwrap();
 
         r
     }
